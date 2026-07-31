@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 
-export function startGame(container, { onScore } = {}) {
+export function startGame(container, { onScore, onHit } = {}) {
   // Renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -51,6 +51,14 @@ export function startGame(container, { onScore } = {}) {
   ballMesh.castShadow = true
   scene.add(ballMesh)
 
+  // Bat (Three)
+  const batGeo = new THREE.BoxGeometry(0.15, 0.9, 1.2)
+  const batMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b })
+  const batMesh = new THREE.Mesh(batGeo, batMat)
+  batMesh.castShadow = true
+  batMesh.position.set(0, 1, 0.6)
+  scene.add(batMesh)
+
   // Physics world (cannon-es)
   const world = new CANNON.World()
   world.gravity.set(0, -9.82, 0)
@@ -71,7 +79,41 @@ export function startGame(container, { onScore } = {}) {
   ballBody.position.set(0, 2, 0)
   ballBody.linearDamping = 0.01
   ballBody.angularDamping = 0.4
+  ballBody.allowSleep = true
   world.addBody(ballBody)
+
+  // Bat body (Cannon) - kinematic so we control its motion
+  const halfExtents = new CANNON.Vec3(0.075, 0.45, 0.6)
+  const batBody = new CANNON.Body({ mass: 0 })
+  batBody.addShape(new CANNON.Box(halfExtents))
+  batBody.position.set(0, 1, 0.6)
+  // Mark as kinematic by setting velocity manually and enabling collisionResponse
+  batBody.type = CANNON.Body.KINEMATIC
+  batBody.collisionResponse = true
+  world.addBody(batBody)
+
+  // Relay bat collisions to a callback (visual hit feedback)
+  ballBody.addEventListener('collide', (evt) => {
+    if (evt.body === batBody) {
+      // small extra impulse away from bat normal to simulate bat "pop"
+      try {
+        const normal = evt.contact ? evt.contact.ni : null
+        if (normal) {
+          const extra = new CANNON.Vec3(normal.x * -1.5, 1.2, normal.z * -1.5)
+          ballBody.applyImpulse(extra, ballBody.position)
+        } else {
+          // fallback
+          ballBody.applyImpulse(new CANNON.Vec3(0, 1.2, -2.2), ballBody.position)
+        }
+      } catch (e) {
+        // ignore if contact info not available
+        ballBody.applyImpulse(new CANNON.Vec3(0, 1.2, -2.2), ballBody.position)
+      }
+
+      // callback for UI
+      if (typeof onHit === 'function') onHit()
+    }
+  })
 
   // Game state
   let lastTime
@@ -111,6 +153,10 @@ export function startGame(container, { onScore } = {}) {
     // Copy physics -> three
     ballMesh.position.copy(ballBody.position)
     ballMesh.quaternion.copy(ballBody.quaternion)
+
+    // Bat kinematic sync: copy batBody -> batMesh
+    batMesh.position.copy(batBody.position)
+    batMesh.quaternion.copy(batBody.quaternion)
 
     renderer.render(scene, camera)
   }
@@ -158,7 +204,6 @@ export function startGame(container, { onScore } = {}) {
     const dy = dragEnd.y - dragStart.y
 
     // Map screen drag to world impulse
-    // Vertical drag (dy negative when dragging up) gives upward + forward power
     const power = Math.min(Math.hypot(dx, dy) / 200, 3)
     const side = (dx / container.clientWidth) * 2 // -1..1
 
@@ -173,9 +218,25 @@ export function startGame(container, { onScore } = {}) {
       ballBody.angularVelocity.set(0, 0, 0)
     }
 
-    // Apply impulse: sideways, up, forward (negative Z)
-    const impulse = new CANNON.Vec3(side * power * 3, 1 + power * 3, -power * 8)
-    ballBody.applyImpulse(impulse, ballBody.position)
+    // Compute swing impulse vector for the bat (world units)
+    const swingVel = new CANNON.Vec3(side * power * 6, 1 + power * 5, -power * 18)
+
+    // Animate kinematic bat forward briefly to collide with ball
+    // Position the bat slightly in front of the ball and sweep through
+    const originalPos = batBody.position.clone()
+    batBody.position.set(0, 1, 0.6) // make sure near batter
+    batBody.velocity.set(swingVel.x, swingVel.y, swingVel.z)
+
+    // Also apply direct impulse to the ball as fallback for responsiveness
+    const directImpulse = new CANNON.Vec3(side * power * 3, 1 + power * 3, -power * 8)
+    ballBody.applyImpulse(directImpulse, ballBody.position)
+
+    // After a short time, stop the bat
+    setTimeout(() => {
+      batBody.velocity.set(0, 0, 0)
+      // return bat smoothly
+      batBody.position.copy(originalPos)
+    }, 120)
   })
 
   // Simple serve function

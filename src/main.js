@@ -39,6 +39,13 @@ const game = startGame(document.querySelector('#game-container'), {
       [{ transform: 'scale(1)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }],
       { duration: 400 }
     )
+  },
+  onHit() {
+    // small hit UI feedback
+    lastHitEl.animate(
+      [{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }],
+      { duration: 250 }
+    )
   }
 })
 
