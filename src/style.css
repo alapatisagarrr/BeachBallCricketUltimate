@@ -7,12 +7,44 @@
   width: 100%;
 }
 
+#game-header {
+  width: 100%;
+  max-width: 1126px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+#scoreboard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+#score-label {
+  font-size: 12px;
+  color: var(--text);
+}
+
+#score-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+#last-hit {
+  font-size: 14px;
+  color: var(--text);
+}
+
 .game-canvas {
   width: 100%;
   height: 60vh; /* responsive height for the scene */
   box-shadow: var(--shadow);
   border-radius: 8px;
   overflow: hidden;
+  background: linear-gradient(#87ceeb 0%, #a0e7ff 60%);
 }
 
 #game-ui {
